@@ -61,14 +61,44 @@ pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
 pub async fn delete_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infallible> {
     log::debug!("delete_grocery_item with id: {}", id);
 
-    Ok(sqlx::query!(
-        r#"
-                DELETE FROM items 
-                WHERE id = $1
-            "#,
-        id,
+    let trans = match db.database().begin().await {
+        Err(_) => return Ok(StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(trans) => trans,
+    };
+    log::debug!("Started transaction...");
+
+    let pos_of_delete = match sqlx::query!(r#"SELECT position FROM items WHERE id = $1"#, id)
+        .fetch_one(db.database())
+        .await
+    {
+        Err(_) => return Ok(StatusCode::NOT_FOUND),
+        Ok(result) => result.position,
+    };
+
+    log::debug!("Position of delete: {}", pos_of_delete);
+    if sqlx::query!(r#"DELETE FROM items WHERE id = $1"#, id,)
+        .execute(db.database())
+        .await
+        .is_err()
+    {
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    log::debug!("Updating all positions > {}", pos_of_delete);
+    if sqlx::query!(
+        r#"UPDATE items SET position = position - 1 WHERE position > $1"#,
+        pos_of_delete
     )
     .execute(db.database())
     .await
-    .map_or_else(|_| StatusCode::NOT_FOUND, |_| StatusCode::NO_CONTENT))
+    .is_err()
+    {
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    log::debug!("Comitting...");
+    Ok(trans.commit().await.map_or_else(
+        |_| StatusCode::INTERNAL_SERVER_ERROR,
+        |_| StatusCode::NO_CONTENT,
+    ))
 }
