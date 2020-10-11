@@ -10,16 +10,23 @@ pub async fn create_grocery_item(
 ) -> Result<impl warp::Reply, Infallible> {
     log::debug!("create_grocery_item: {:?}", new_item);
 
-    Ok(sqlx::query!(
+    Ok(sqlx::query_as!(
+        GroceryItem,
         r#"INSERT INTO items (name, checked_off, position)
-            VALUES($1, $2, $3)"#,
+           VALUES($1, $2, $3)
+           RETURNING id, name, checked_off, position, created_at"#,
         new_item.name,
         new_item.checked_off,
         new_item.position as i32,
     )
-    .execute(db.database())
+    .fetch_one(db.database())
     .await
-    .map_or_else(|_| StatusCode::BAD_REQUEST, |_| StatusCode::CREATED))
+    .map_or_else(
+        |_| StatusCode::BAD_REQUEST.into_response(),
+        |item| {
+            warp::reply::with_status(warp::reply::json(&item), StatusCode::CREATED).into_response()
+        },
+    ))
 }
 
 pub async fn read_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infallible> {

@@ -8,6 +8,7 @@ use crate::database::Db;
 use dotenv::dotenv;
 use pretty_env_logger;
 use std::env;
+use warp::Filter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,10 +22,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     pretty_env_logger::init();
 
+    let cors = warp::cors()
+        .allow_methods(vec!["GET", "POST", "DELETE", "PUT", "PATCH"])
+        .allow_header("content-type")
+        .allow_any_origin()
+        .build();
+
     let db = Db::initialize(&database_uri).await?;
     let api = filters::grocery_items(db);
 
-    warp::serve(api).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(api.with(cors))
+        .run(([127, 0, 0, 1], 3030))
+        .await;
 
     Ok(())
 }
