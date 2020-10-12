@@ -4,31 +4,6 @@ use std::convert::Infallible;
 use warp::http::StatusCode;
 use warp::Reply;
 
-pub async fn create_grocery_item(
-    new_item: NewGroceryItem,
-    db: Db,
-) -> Result<impl warp::Reply, Infallible> {
-    log::debug!("create_grocery_item: {:?}", new_item);
-
-    Ok(sqlx::query_as!(
-        GroceryItem,
-        r#"INSERT INTO items (name, checked_off, position)
-           VALUES($1, $2, $3)
-           RETURNING id, name, checked_off, position, created_at"#,
-        new_item.name,
-        new_item.checked_off,
-        new_item.position as i32,
-    )
-    .fetch_one(db.database())
-    .await
-    .map_or_else(
-        |_| StatusCode::BAD_REQUEST.into_response(),
-        |item| {
-            warp::reply::with_status(warp::reply::json(&item), StatusCode::CREATED).into_response()
-        },
-    ))
-}
-
 pub async fn read_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infallible> {
     log::debug!("read_grocery_item for id: {:?}", id);
 
@@ -56,6 +31,7 @@ pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
         r#"
                 SELECT id, name, checked_off, position, created_at
                 FROM items 
+                ORDER BY position
             "#,
     )
     .fetch_all(db.database())
@@ -65,6 +41,56 @@ pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
         |items| warp::reply::json(&items).into_response(),
     ))
 }
+
+pub async fn create_grocery_item(
+    new_item: NewGroceryItem,
+    db: Db,
+) -> Result<impl warp::Reply, Infallible> {
+    log::debug!("create_grocery_item: {:?}", new_item);
+
+    Ok(sqlx::query_as!(
+        GroceryItem,
+        r#"INSERT INTO items (name, checked_off, position)
+           VALUES($1, $2, $3)
+           RETURNING id, name, checked_off, position, created_at"#,
+        new_item.name,
+        new_item.checked_off,
+        new_item.position as i32,
+    )
+    .fetch_one(db.database())
+    .await
+    .map_or_else(
+        |_| StatusCode::BAD_REQUEST.into_response(),
+        |item| {
+            warp::reply::with_status(warp::reply::json(&item), StatusCode::CREATED).into_response()
+        },
+    ))
+}
+
+pub async fn update_grocery_item(
+    id: i32,
+    new_item: GroceryItem,
+    db: Db,
+) -> Result<impl warp::Reply, Infallible> {
+    log::debug!("update_grocery_item: {:?}", new_item);
+
+    Ok(sqlx::query!(
+        r#"UPDATE items SET (name, checked_off, position, created_at) = ($1, $2, $3, $4)
+           WHERE id = $5"#,
+        new_item.name,
+        new_item.checked_off,
+        new_item.position,
+        new_item.created_at,
+        id,
+    )
+    .execute(db.database())
+    .await
+    .map_or_else(
+        |_| StatusCode::INTERNAL_SERVER_ERROR,
+        |_| StatusCode::NO_CONTENT,
+    ))
+}
+
 pub async fn delete_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infallible> {
     log::debug!("delete_grocery_item with id: {}", id);
 

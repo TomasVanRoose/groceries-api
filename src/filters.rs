@@ -10,6 +10,7 @@ pub fn grocery_items(
     items_list(db.clone())
         .or(item_create(db.clone()))
         .or(item_read(db.clone()))
+        .or(item_update(db.clone()))
         .or(item_delete(db.clone()))
 }
 
@@ -35,6 +36,14 @@ fn item_create(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::
         .and(json_body_partial())
         .and(with_db(db))
         .and_then(handlers::create_grocery_item)
+}
+/// PUT /items/:id
+fn item_update(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("items" / i32)
+        .and(warp::put())
+        .and(json_body())
+        .and(with_db(db))
+        .and_then(handlers::update_grocery_item)
 }
 /// DELETE /items/:id
 fn item_delete(db: Db) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
