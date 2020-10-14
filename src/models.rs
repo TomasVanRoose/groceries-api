@@ -8,6 +8,7 @@ pub struct GroceryItem {
     pub checked_off: bool,
     pub position: i32,
 
+    pub checked_off_at: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
 }
 

@@ -1,5 +1,6 @@
 use crate::database::Db;
 use crate::models::{GroceryItem, NewGroceryItem};
+use chrono::NaiveDate;
 use std::convert::Infallible;
 use warp::http::StatusCode;
 use warp::Reply;
@@ -10,7 +11,7 @@ pub async fn read_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infa
     Ok(sqlx::query_as!(
         GroceryItem,
         r#"
-                SELECT id, name, checked_off, position, created_at
+                SELECT id, name, checked_off, position, checked_off_at, created_at
                 FROM items 
                 WHERE id = $1
             "#,
@@ -29,7 +30,7 @@ pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
     Ok(sqlx::query_as!(
         GroceryItem,
         r#"
-                SELECT id, name, checked_off, position, created_at
+                SELECT id, name, checked_off, position, checked_off_at, created_at
                 FROM items 
                 ORDER BY position
             "#,
@@ -52,7 +53,7 @@ pub async fn create_grocery_item(
         GroceryItem,
         r#"INSERT INTO items (name, checked_off, position)
            VALUES($1, $2, $3)
-           RETURNING id, name, checked_off, position, created_at"#,
+           RETURNING id, name, checked_off, position, checked_off_at, created_at"#,
         new_item.name,
         new_item.checked_off,
         new_item.position as i32,
@@ -74,12 +75,19 @@ pub async fn update_grocery_item(
 ) -> Result<impl warp::Reply, Infallible> {
     log::debug!("update_grocery_item: {:?}", new_item);
 
+    let checked_off_at = if new_item.checked_off {
+        Some(chrono::offset::Utc::now().naive_utc())
+    } else {
+        None
+    };
+
     Ok(sqlx::query!(
-        r#"UPDATE items SET (name, checked_off, position, created_at) = ($1, $2, $3, $4)
-           WHERE id = $5"#,
+        r#"UPDATE items SET (name, checked_off, position, checked_off_at, created_at) = ($1, $2, $3, $4, $5)
+           WHERE id = $6"#,
         new_item.name,
         new_item.checked_off,
         new_item.position,
+        checked_off_at,
         new_item.created_at,
         id,
     )
