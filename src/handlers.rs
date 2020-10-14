@@ -27,6 +27,14 @@ pub async fn read_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infa
 pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
     log::debug!("all_grocery_items");
 
+    // delete all items that where ticked off yesterday or longer
+    if let Err(_) = sqlx::query!(r#"DELETE FROM items where checked_off_at < 'yesterday'"#)
+        .execute(db.database())
+        .await
+    {
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+    }
+
     Ok(sqlx::query_as!(
         GroceryItem,
         r#"
