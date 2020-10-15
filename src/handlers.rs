@@ -1,6 +1,5 @@
 use crate::database::Db;
 use crate::models::{GroceryItem, NewGroceryItem};
-use chrono::NaiveDate;
 use std::convert::Infallible;
 use warp::http::StatusCode;
 use warp::Reply;
@@ -20,7 +19,10 @@ pub async fn read_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, Infa
     .fetch_one(db.database())
     .await
     .map_or_else(
-        |_| StatusCode::NOT_FOUND.into_response(),
+        |err| {
+            log::error!("Error selecting item: {}", err);
+            StatusCode::NOT_FOUND.into_response()
+        },
         |item| warp::reply::json(&item).into_response(),
     ))
 }
@@ -28,10 +30,11 @@ pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
     log::debug!("all_grocery_items");
 
     // delete all items that where ticked off yesterday or longer
-    if let Err(_) = sqlx::query!(r#"DELETE FROM items where checked_off_at < 'yesterday'"#)
+    if let Err(err) = sqlx::query!(r#"DELETE FROM items where checked_off_at < 'yesterday'"#)
         .execute(db.database())
         .await
     {
+        log::error!("Error deleting old checked off items: {}", err);
         return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
 
@@ -46,7 +49,10 @@ pub async fn all_grocery_items(db: Db) -> Result<impl warp::Reply, Infallible> {
     .fetch_all(db.database())
     .await
     .map_or_else(
-        |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        |err| {
+            log::error!("Error selecting items: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        },
         |items| warp::reply::json(&items).into_response(),
     ))
 }
@@ -69,7 +75,10 @@ pub async fn create_grocery_item(
     .fetch_one(db.database())
     .await
     .map_or_else(
-        |_| StatusCode::BAD_REQUEST.into_response(),
+        |err| {
+            log::error!("Error creating item: {}", err);
+            StatusCode::BAD_REQUEST.into_response()
+        },
         |item| {
             warp::reply::with_status(warp::reply::json(&item), StatusCode::CREATED).into_response()
         },
@@ -120,34 +129,40 @@ pub async fn delete_grocery_item(id: i32, db: Db) -> Result<impl warp::Reply, In
         .fetch_one(db.database())
         .await
     {
-        Err(_) => return Ok(StatusCode::NOT_FOUND),
+        Err(err) => {
+            log::error!("Error selecting item to delete: {}", err);
+            return Ok(StatusCode::NOT_FOUND);
+        }
         Ok(result) => result.position,
     };
 
     log::debug!("Position of delete: {}", pos_of_delete);
-    if sqlx::query!(r#"DELETE FROM items WHERE id = $1"#, id,)
+    if let Err(err) = sqlx::query!(r#"DELETE FROM items WHERE id = $1"#, id,)
         .execute(db.database())
         .await
-        .is_err()
     {
+        log::error!("Error deleting item: {}", err);
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     log::debug!("Updating all positions > {}", pos_of_delete);
-    if sqlx::query!(
+    if let Err(err) = sqlx::query!(
         r#"UPDATE items SET position = position - 1 WHERE position > $1"#,
         pos_of_delete
     )
     .execute(db.database())
     .await
-    .is_err()
     {
+        log::error!("Error updating position of other items: {}", err);
         return Ok(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
     log::debug!("Comitting...");
     Ok(trans.commit().await.map_or_else(
-        |_| StatusCode::INTERNAL_SERVER_ERROR,
+        |err| {
+            log::error!("Error commiting transaction: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
         |_| StatusCode::NO_CONTENT,
     ))
 }
