@@ -68,7 +68,7 @@ pub async fn create_grocery_item(
         r#"INSERT INTO items (name, checked_off, position)
            VALUES($1, $2, $3)
            RETURNING id, name, checked_off, position, checked_off_at, created_at"#,
-        new_item.name,
+        capitalize(&new_item.name),
         new_item.checked_off,
         new_item.position as i32,
     )
@@ -83,6 +83,14 @@ pub async fn create_grocery_item(
             warp::reply::with_status(warp::reply::json(&item), StatusCode::CREATED).into_response()
         },
     ))
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
 }
 
 pub async fn update_grocery_item(
